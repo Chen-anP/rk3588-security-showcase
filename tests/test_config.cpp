@@ -381,3 +381,15 @@ TEST(Config, RtspRejectsBadValues)
         EXPECT_FALSE(config::load(std::string{kMinimal} + "[rtsp]\n" + bad + "\n", errors)) << bad;
     }
 }
+
+TEST(Config, DisplayIdleTimeout)
+{
+    std::vector<Error> errors;
+    const auto defaults = config::load(kMinimal, errors);
+    ASSERT_TRUE(defaults) << dump(errors);
+    EXPECT_EQ(defaults->display.idle_timeout_seconds, 20);
+    const auto disabled = config::load("[camera]\ndevice=/dev/video0\n[display]\nidle_timeout_seconds=0\n", errors);
+    ASSERT_TRUE(disabled) << dump(errors);
+    EXPECT_EQ(disabled->display.idle_timeout_seconds, 0);
+    EXPECT_FALSE(config::load("[camera]\ndevice=/dev/video0\n[display]\nidle_timeout_seconds=-1\n", errors));
+}

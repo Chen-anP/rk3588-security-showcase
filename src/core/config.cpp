@@ -102,6 +102,7 @@ std::optional<AppConfig> load(std::string_view text, std::vector<ini::Error> &er
     }
 
     // [display]
+    read_int(doc, "display", "idle_timeout_seconds", 0, 3600, cfg.display.idle_timeout_seconds, errors);
     if (const ini::Value *v = doc.find("display", "device"); v != nullptr) {
         if (v->text == "auto" || v->text.rfind("/dev/dri/card", 0) == 0) {
             cfg.display.device = v->text;
@@ -363,6 +364,7 @@ std::string summary(const AppConfig &cfg)
     s += " buffers=" + std::to_string(cfg.camera.buffers);
     s += " display.device=" + cfg.display.device;
     s += " connector=" + cfg.display.connector;
+    s += " display.idle_timeout_seconds=" + std::to_string(cfg.display.idle_timeout_seconds);
     s += " touch=" + (cfg.display.touch.empty() ? std::string{"无"} : cfg.display.touch);
     s += " detect=" + std::string{cfg.detect.enabled ? "开" : "关"};
     if (cfg.detect.enabled) {

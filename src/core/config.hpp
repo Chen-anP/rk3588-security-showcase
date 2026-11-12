@@ -23,6 +23,8 @@ struct Camera {
 
 // 显示和触摸（第 4 步）
 struct Display {
+    int idle_timeout_seconds = 20;  // 0 保持屏幕常亮
+
     std::string device = "auto";     // "auto"（按驱动名选 rockchip 显示设备）或 /dev/dri/cardN
     std::string connector = "auto";  // "auto"（第一个连了屏幕的输出口）或输出口名，比如 HDMI-A-1
     std::string touch;               // 触摸屏的 /dev/input/by-id/ 路径；空 = 不用触摸

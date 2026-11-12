@@ -132,6 +132,8 @@ struct DrmDisplay::Impl {
     drmModeModeInfo mode{};
     ModeInfo info;
     std::string reason;
+    std::uint32_t dpms_prop = 0;
+    bool asleep = false;
     std::uint32_t color_prop = 0;  // 连接器属性 color_format 的 id；0 = 不用改
     std::uint64_t color_value = 0;
     std::string color_note;  // 写进 summary 的说明
@@ -188,7 +190,7 @@ struct DrmDisplay::Impl {
     }
 
     // 找连接器的 color_format 属性，需要改成 rgb 时记下来，第一次设置模式前改（D16）
-    void find_color_format()
+    void find_connector_properties()
     {
         drmModeObjectPropertiesPtr props = drmModeObjectGetProperties(fd, conn_id, DRM_MODE_OBJECT_CONNECTOR);
         if (props == nullptr) {
@@ -198,6 +200,9 @@ struct DrmDisplay::Impl {
             drmModePropertyPtr p = drmModeGetProperty(fd, props->props[i]);
             if (p == nullptr) {
                 continue;
+            }
+            if (std::string_view{p->name} == "DPMS" && (p->flags & DRM_MODE_PROP_ENUM) != 0) {
+                dpms_prop = p->prop_id;
             }
             if (std::string_view{p->name} == "color_format" && (p->flags & DRM_MODE_PROP_ENUM) != 0) {
                 std::vector<EnumValue> enums;
@@ -396,7 +401,7 @@ bool DrmDisplay::open(const Options &opts, std::string &err)
     d.info = choice->mode;
     d.reason = choice->reason;
     d.saved = drmModeGetCrtc(d.fd, d.crtc_id);
-    d.find_color_format();
+    d.find_connector_properties();
 
     for (auto &b : d.buf) {
         if (!d.create_buffer(b, err)) {
@@ -435,6 +440,9 @@ bool DrmDisplay::present(const std::uint8_t *pixels, std::size_t stride, std::st
     if (d.fd < 0) {
         err = "显示设备没有打开";
         return false;
+    }
+    if (d.asleep) {
+        return true;  // LVGL 继续处理输入，停掉送往 HDMI 的翻页。
     }
     d.drain_events();  // 翻页完成的事件要读了才知道；先读掉已经到的，剩下的才是真要等的
     if (d.flip_pending) {
@@ -481,6 +489,39 @@ bool DrmDisplay::present(const std::uint8_t *pixels, std::size_t stride, std::st
     return true;
 }
 
+bool DrmDisplay::supports_power_control() const
+{
+    return impl_->dpms_prop != 0;
+}
+
+bool DrmDisplay::sleeping() const
+{
+    return impl_->asleep;
+}
+
+bool DrmDisplay::set_sleeping(bool asleep, std::string &err)
+{
+    auto &d = *impl_;
+    if (d.asleep == asleep) {
+        return true;
+    }
+    if (d.fd < 0 || d.dpms_prop == 0 || !d.mode_set) {
+        err = "当前 HDMI 输出未就绪或不支持 DPMS";
+        return false;
+    }
+    if (!d.wait_flip(kFlipTimeoutMs)) {
+        err = "切换显示电源前等待翻页超时";
+        return false;
+    }
+    const auto power = static_cast<std::uint64_t>(asleep ? DRM_MODE_DPMS_OFF : DRM_MODE_DPMS_ON);
+    if (drmModeConnectorSetProperty(d.fd, d.conn_id, d.dpms_prop, power) != 0) {
+        err = "切换 HDMI 电源失败：" + errno_text(errno);
+        return false;
+    }
+    d.asleep = asleep;
+    return true;
+}
+
 void DrmDisplay::wait_idle()
 {
     if (impl_->flip_pending && !impl_->wait_flip(kFlipTimeoutMs)) {
@@ -498,6 +539,10 @@ void DrmDisplay::close()
     Impl &d = *impl_;
     if (d.fd < 0) {
         return;
+    }
+    std::string power_error;
+    if (d.asleep && !set_sleeping(false, power_error)) {
+        LOG_W("display", "%s", power_error.c_str());
     }
     wait_idle();
     if (d.mode_set && d.saved != nullptr && d.saved->mode_valid != 0 && d.saved->buffer_id != 0) {

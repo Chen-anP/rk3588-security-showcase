@@ -47,6 +47,9 @@ class DrmDisplay {
 
     // 等最后一次翻页完成（退出前调用，避免关闭时还有翻页在进行）
     void wait_idle();
+    bool supports_power_control() const;
+    bool sleeping() const;
+    bool set_sleeping(bool asleep, std::string &err);
 
     struct Stats {
         std::uint64_t presented = 0;   // 成功提交的帧

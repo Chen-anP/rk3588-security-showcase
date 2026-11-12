@@ -232,6 +232,14 @@ int ui_run(const config::AppConfig &cfg)
     const auto t0 = Clock::now();
     const double cpu0 = cpu_seconds();
     const long rss0 = rss_kb();
+    const auto screen_timeout = std::chrono::seconds(cfg.display.idle_timeout_seconds);
+    bool auto_sleep = screen_timeout.count() != 0 && drm.supports_power_control();
+    if (screen_timeout.count() != 0 && !auto_sleep) {
+        LOG_W("display", "HDMI 不支持 DPMS，保持亮屏");
+    }
+    auto last_motion = t0;
+    auto next_wake_retry = t0;
+    bool wake_pending = false;
     auto last_preview = t0;
     auto last = t0;
     double cpu_last = cpu0;
@@ -274,8 +282,15 @@ int ui_run(const config::AppConfig &cfg)
                 }
             }
         }
+        bool motion_available = false;
         if (gate) {
-            screens->show_access(access::status_text(gate->view()));
+            const auto state = gate->view();
+            motion_available = !state.pir_degraded;
+            screens->show_access(access::status_text(state));
+            if (state.pir_active) {
+                last_motion = now;
+                wake_pending = true;
+            }
         }
         if (rec) {
             rec->tick();  // 没有新结果时也让录像的收尾计时往前走
@@ -292,7 +307,7 @@ int ui_run(const config::AppConfig &cfg)
             st.detecting = p != nullptr && p->detecting();
             st.detect_p50_ms = p != nullptr ? p->infer_time.summary().p50_ms : 0;
             st.lost = cs.lost;
-            st.ui_fps = dt > 0 ? static_cast<double>(ram->frames() - ui_frames_last) / dt : 0;
+            st.ui_fps = dt > 0 ? static_cast<double>(drm.stats().presented - ui_frames_last) / dt : 0;
             st.cpu_percent = dt > 0 ? (cpu - cpu_last) / dt * 100.0 : 0;
             if (!cs.streaming) {
                 screens->clear_preview();
@@ -317,10 +332,40 @@ int ui_run(const config::AppConfig &cfg)
             last = now;
             cpu_last = cpu;
             frames_last = cs.frames;
-            ui_frames_last = ram->frames();
+            ui_frames_last = drm.stats().presented;
         }
 
         const std::uint32_t idle = lv_timer_handler();  // 处理输入、动画，有变化就重画并翻页
+        if (auto_sleep) {
+            const auto screen_now = Clock::now();
+            const auto touch_idle = std::chrono::milliseconds(lv_display_get_inactive_time(ram->display()));
+            const bool touch_held = touch != nullptr && lv_indev_get_state(touch) == LV_INDEV_STATE_PRESSED;
+            const bool can_wake = touch != nullptr || motion_available;
+            if (drm.sleeping()) {
+                wake_pending = wake_pending || !can_wake || touch_held || touch_idle < screen_timeout;
+                if (wake_pending && screen_now >= next_wake_retry) {
+                    if (drm.set_sleeping(false, err)) {
+                        lv_display_trigger_activity(ram->display());
+                        lv_obj_invalidate(lv_display_get_screen_active(ram->display()));
+                        last_motion = screen_now;
+                        LOG_I("display", "屏幕已唤醒");
+                    } else {
+                        next_wake_retry = screen_now + std::chrono::seconds(1);
+                        LOG_W("display", "%s，将重试唤醒", err.c_str());
+                    }
+                }
+            } else if (can_wake && !touch_held && touch_idle >= screen_timeout &&
+                       screen_now - last_motion >= screen_timeout) {
+                wake_pending = false;
+                if (drm.set_sleeping(true, err)) {
+                    next_wake_retry = screen_now;
+                    LOG_I("display", "屏幕已息屏");
+                } else {
+                    auto_sleep = false;
+                    LOG_W("display", "%s，保持亮屏", err.c_str());
+                }
+            }
+        }
         const std::uint32_t wait = std::min<std::uint32_t>(idle, 5);  // 最多睡 5 ms，及时拿到新的预览帧
         std::this_thread::sleep_for(std::chrono::milliseconds(wait));
     }
@@ -346,7 +391,7 @@ int ui_run(const config::AppConfig &cfg)
     const auto cs = svc.stats();
     const auto ds = drm.stats();
     const auto ls = latest.stats();
-    const std::uint64_t ui_frames = ram->frames();
+    const std::uint64_t ui_frames = ds.presented;
 
     if (touch != nullptr) {
         lv_evdev_delete(touch);
