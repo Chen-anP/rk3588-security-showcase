@@ -1,0 +1,43 @@
+# 板子上要装的软件包（apt）。一行一个，# 后面是注释。
+# 版本跟随 Ubuntu 22.04 官方仓库（安全更新会换小版本，旧版本会从源里删掉，所以不在这里写死版本号）；
+# 实际装上的版本由 provision.sh 打印并记进装机日志。
+build-essential
+cmake
+ninja-build
+git
+gdb
+pkg-config
+v4l-utils          # v4l2-ctl：查看、设置摄像头
+i2c-tools
+gpiod
+htop
+sysstat
+libopencv-dev
+libgtest-dev       # 单元测试（第 2b 步）
+clang-format       # 代码检查（第 2b 步），Ubuntu 22.04 上是 14 版
+clang-tidy
+shellcheck
+libstdc++-12-dev   # clang-tidy 选中 GCC 12 时需要它的 C++ 头文件（D10）
+g++-12             # TSan 构建用（cmake --preset tsan）：GCC 11 的 TSan 会误报 condition_variable::wait_for（D15）
+libdrm-dev         # 显示输出（第 4 步）
+libturbojpeg0-dev  # MJPG 软件解码，预览和第 5 步硬件解码的对比基线（第 4 步）
+evtest             # 查看触摸屏原始事件（调试触摸）
+librockchip-mpp-dev  # 硬件编解码 MPP（第 5 步）；Orange Pi 镜像自带、hold，这里列出来是为了新板子上也确保有
+librga-dev           # 2D 图像硬件 RGA（第 5 步），同上
+libsqlite3-dev       # 人脸库（第 7d 步）
+sqlite3              # 命令行查看人脸库（调试用）
+libavformat-dev      # 事件录像写 MP4（第 8b 步）：只用 FFmpeg 的封装库，LGPL，动态链接
+libavcodec-dev       # 同上（AVPacket 等定义在 libavcodec）
+libavutil-dev        # 同上
+ffmpeg               # ffprobe：检查录下来的 MP4（调试用）
+libgstreamer1.0-dev              # RTSP 实时流（第 8c 步）：GStreamer，LGPL，动态链接
+libgstreamer-plugins-base1.0-dev # 同上（appsrc）
+libgstrtspserver-1.0-dev         # 同上（rtsp-server）
+gstreamer1.0-plugins-base        # 运行时插件：app
+gstreamer1.0-plugins-good        # 运行时插件：rtp（rtph264pay）、rtsp（rtspsrc，测试用）
+gstreamer1.0-plugins-bad         # 运行时插件：videoparsers（h264parse）
+gstreamer1.0-tools               # gst-launch-1.0、gst-inspect-1.0（调试用）
+
+libmosquitto-dev # MQTT 状态与通行事件上报
+libgpiod-dev # 人体红外 GPIO 输入
+gpiod # GPIO 测试工具

@@ -1,0 +1,17 @@
+# clang-tidy 14。先开“抓 bug”类检查，风格类以后再加。
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  performance-*,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -modernize-use-nodiscard,
+  readability-else-after-return,
+  readability-redundant-*,
+  misc-unused-*,
+  cppcoreguidelines-pro-type-cstyle-cast,
+  cppcoreguidelines-narrowing-conversions
+WarningsAsErrors: ''
+HeaderFilterRegex: 'src/.*'
+FormatStyle: file

@@ -1,0 +1,67 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}"
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug（日常开发）",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release",
+      "displayName": "Release（带调试符号，用于测性能和发布）",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "asan",
+      "displayName": "ASan + UBSan（查内存越界、未定义行为）",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "RKSEC_ASAN": "ON" }
+    },
+    {
+      "name": "tsan",
+      "displayName": "TSan（查数据竞争）",
+      "description": "用 GCC 12 编译：GCC 11 的 TSan 不认识 pthread_cond_clockwait（condition_variable::wait_for 用它），会误报 double lock（D15）",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "RKSEC_TSAN": "ON",
+        "CMAKE_C_COMPILER": "gcc-12",
+        "CMAKE_CXX_COMPILER": "g++-12"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI（警告当错误）",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug", "RKSEC_WERROR": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "tsan", "configurePreset": "tsan" },
+    { "name": "ci", "configurePreset": "ci" }
+  ],
+  "testPresets": [
+    {
+      "name": "test-base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 8 }
+    },
+    { "name": "debug", "configurePreset": "debug", "inherits": "test-base" },
+    { "name": "asan", "configurePreset": "asan", "inherits": "test-base" },
+    { "name": "tsan", "configurePreset": "tsan", "inherits": "test-base" },
+    { "name": "ci", "configurePreset": "ci", "inherits": "test-base" }
+  ]
+}

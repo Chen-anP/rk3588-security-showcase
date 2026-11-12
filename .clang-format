@@ -1,0 +1,15 @@
+# clang-format 14（Ubuntu 22.04 自带版本）。改格式规则要全组同意，改完全部重排一次。
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+PointerAlignment: Right
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+FixNamespaceComments: true
+SpacesBeforeTrailingComments: 2

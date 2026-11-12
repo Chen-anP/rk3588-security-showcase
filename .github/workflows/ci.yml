@@ -1,0 +1,92 @@
+# 每次推送和 PR：在 Ubuntu 22.04（和板子同一个系统版本）上编译、测试、检查。
+# 只编译不依赖 RK3588 硬件的代码；硬件相关模块以后用 CMake 选项隔离。
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # 需要完整历史和标签，git describe 才有版本号
+
+      - name: 安装依赖（版本随 Ubuntu 22.04 锁定）
+        run: |
+          sudo apt-get update
+          # runner 预装了 LLVM 的 libunwind-14-dev，和 libgstreamer1.0-dev 要的 libunwind-dev 冲突（Ubuntu bug 1989124）。
+          # 单独先装 libunwind-dev，apt 才会把冲突的那个换掉；和别的包一起装时 apt 不肯换，报 held broken packages
+          sudo apt-get install -y --no-install-recommends libunwind-dev
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ g++-12 libgtest-dev clang-format clang-tidy shellcheck \
+            libmosquitto-dev mosquitto mosquitto-clients openssl libgpiod-dev libdrm-dev libturbojpeg0-dev libsdl2-dev libsqlite3-dev \
+            libavformat-dev libavcodec-dev libavutil-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgstrtspserver-1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
+
+      - name: 版本号一致性
+        run: |
+          # 当前提交如果正好是一个 vX.Y.Z 标签，它必须和 CMakeLists.txt 里的 project(VERSION) 一致
+          TAG=$(git describe --tags --exact-match 2>/dev/null || true)
+          VER=$(sed -n 's/^project([^)]*VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "tag=${TAG:-无} project=$VER"
+          if [ -n "$TAG" ] && [ "$TAG" != "v$VER" ]; then
+            echo "标签 $TAG 和 project(VERSION $VER) 不一致"; exit 1
+          fi
+
+      - name: 编译（警告当错误）
+        run: |
+          cmake --preset ci
+          cmake --build --preset ci
+
+      - name: 单元测试
+        run: ctest --preset ci
+
+      - name: MQTT 本机 TLS 与重连验收
+        run: python3 tests/mqtt_integration.py
+
+      - name: 程序能运行并打印版本
+        run: ./build/ci/src/rk3588-security --version
+
+      - name: 仓库自带的配置文件能通过检查
+        run: ./build/ci/src/rk3588-security --config config/rk3588-security.conf --check-config
+
+      - name: 界面截图（每个页面一张，在这次运行页面的 Artifacts 里下载）
+        run: |
+          mkdir -p ui-snapshots
+          RKSEC_UI_SNAPSHOT_DIR=$PWD/ui-snapshots ./build/ci/tests/rksec_tests --gtest_filter='UiTest.PagesRenderAndSnapshot'
+          # 转成 PNG 方便在 Windows 上直接看（GitHub 的 Ubuntu 镜像自带 ImageMagick；没有就保留 PPM）
+          if command -v convert >/dev/null; then
+            for f in ui-snapshots/*.ppm; do convert "$f" "${f%.ppm}.png" && rm "$f"; done
+          fi
+
+      - name: 界面模拟器和界面开销（不开窗口，跑 3 秒；只看能不能跑，耗时 CI 机器上不稳定，不做判断）
+        run: |
+          ./build/ci/src/rk3588-security-sim --headless --seconds 3 --auto-nav
+          ./build/ci/src/rk3588-security --config config/rk3588-security.conf --ui-bench 3 --busy 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-snapshots
+          path: ui-snapshots/
+
+      - name: 代码检查
+        run: tools/check_code.sh
+
+      - name: ASan + UBSan 跑一遍测试
+        run: |
+          cmake --preset asan
+          cmake --build --preset asan
+          ctest --preset asan
+
+      - name: TSan 跑一遍测试（多线程代码：队列、帧句柄、计时；用 GCC 12，见 D15）
+        run: |
+          cmake --preset tsan
+          cmake --build --preset tsan
+          ctest --preset tsan
+
+      - name: 装机脚本测试（假根目录 + 假命令，不需要板子）
+        run: tests/provision/test_provision.sh

@@ -1,0 +1,2 @@
+# Orange Pi 5 Ultra, verified gpiochip1 = GPIO bank 1. Recheck after kernel/device-tree changes.
+SUBSYSTEM=="gpio", KERNEL=="gpiochip1", OWNER="orangepi", MODE="0600"

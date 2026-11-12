@@ -1,0 +1,4 @@
+# 生成字体用的源字体文件（锁定）。gen_fonts.sh 会核对，不一致时给出警告：
+# 字形可能和仓库里现在的略有不同，生成后要看一眼界面截图（tests/test_ui.cpp 的 PagesRenderAndSnapshot）。
+# 来源：Ubuntu 24.04 软件包 fonts-noto-cjk 1:20230817+repack1-3（Noto Sans CJK，SIL Open Font License 1.1）
+b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a  NotoSansCJK-Regular.ttc
